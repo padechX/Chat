@@ -260,7 +260,7 @@ async function handleWebhookVerify(url, env) {
   const mode = url.searchParams.get('hub.mode')
   const token = url.searchParams.get('hub.verify_token')
   const challenge = url.searchParams.get('hub.challenge')
-  if (mode === 'subscribe' && token && challenge && token === 'myspa-verify-123'){//env.WHATSAPP_WEBHOOK_VERIFY_TOKEN) {
+  if (mode === 'subscribe' && token && challenge && token === env.WHATSAPP_WEBHOOK_VERIFY_TOKEN) {
     return new Response(challenge, { status: 200, headers: { 'content-type': 'text/plain' } })
   }
   return new Response('Forbidden', { status: 403 })
