@@ -278,7 +278,7 @@ async function handleWebhookVerify(url, env) {
 async function handleWebhookPost(request, env) {
   console.log('WEBHOOK POST RECEIVED')
   
-  if (false) {  // Desactivar validación de firma temporalmente
+  if (env.WHATSAPP_APP_SECRET) {
     const ok = await verifyMetaSignature(request, env.WHATSAPP_APP_SECRET)
     if (!ok) return new Response('Invalid signature', { status: 401 })
   }
