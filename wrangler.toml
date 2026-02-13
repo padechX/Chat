@@ -11,6 +11,20 @@ bindings = [
 tag = "v1"
 new_sqlite_classes = ["MessageQueue"]
 
+[observability]
+enabled = true
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true
+
+[observability.traces]
+enabled = false
+persist = true
+head_sampling_rate = 1
+
 [vars]
 WHATSAPP_TOKEN = "EAAV7JyQel7MBQjWzuBkK0cPvt9kFXjXTdMKxyOmUp8Vtw6N02U4WRjhVuBGbJkDeqBHfjOdD34GGs5ivItm4aGSImsrCNu7lSlT0Pg6vuW00nDkkIZBIbrbKZAJppzTY9NCBjWFLQhZBZBTygTXk799mSz8iKPjnKPqsewfLhbhOHrV6hOmWR6LZC3mUfZBAZDZD"
 WHATSAPP_PHONE_NUMBER_ID = "908739995665969"
