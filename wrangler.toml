@@ -1,0 +1,19 @@
+name = "chats-app"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+[durable_objects]
+bindings = [
+  { name = "MESSAGE_QUEUE", class_name = "MessageQueue" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["MessageQueue"]
+
+[vars]
+WHATSAPP_TOKEN = "EAAV7JyQel7MBQjWzuBkK0cPvt9kFXjXTdMKxyOmUp8Vtw6N02U4WRjhVuBGbJkDeqBHfjOdD34GGs5ivItm4aGSImsrCNu7lSlT0Pg6vuW00nDkkIZBIbrbKZAJppzTY9NCBjWFLQhZBZBTygTXk799mSz8iKPjnKPqsewfLhbhOHrV6hOmWR6LZC3mUfZBAZDZD"
+WHATSAPP_PHONE_NUMBER_ID = "908739995665969"
+WHATSAPP_WEBHOOK_VERIFY_TOKEN = "myspa-verify-123"
+WHATSAPP_APP_SECRET = "myspa_secret"
+WHATSAPP_GRAPH_VERSION = "v20.0"
