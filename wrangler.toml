@@ -1,4 +1,4 @@
-name = "chats-app"
+name = "whatsapp"
 main = "worker.js"
 compatibility_date = "2024-11-01"
 
