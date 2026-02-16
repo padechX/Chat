@@ -306,7 +306,8 @@ async function handleWebhookPost(request, env) {
 function normalizeIncoming(m, value) {
   const id = m.id || crypto.randomUUID()
   const from = m.from
-  const timestamp = Number(m.timestamp || Date.now())
+  // WhatsApp envía timestamp en segundos desde epoch; convertir a milisegundos para Date()
+  const timestamp = m.timestamp ? Number(m.timestamp) * 1000 : Date.now()
   const type = m.type
   let payload = {}
   if (type === 'text') {
