@@ -2,7 +2,7 @@ name = "whatsapp"
 main = "worker.js"
 compatibility_date = "2024-11-01"
 
- [durable_objects]
+[durable_objects]
 bindings = [
   { name = "MESSAGE_QUEUE", class_name = "MessageQueue" }
 ]
@@ -25,9 +25,6 @@ enabled = false
 persist = true
 head_sampling_rate = 1
 
-[vars]
-WHATSAPP_TOKEN = "EAAV7JyQel7MBQjWzuBkK0cPvt9kFXjXTdMKxyOmUp8Vtw6N02U4WRjhVuBGbJkDeqBHfjOdD34GGs5ivItm4aGSImsrCNu7lSlT0Pg6vuW00nDkkIZBIbrbKZAJppzTY9NCBjWFLQhZBZBTygTXk799mSz8iKPjnKPqsewfLhbhOHrV6hOmWR6LZC3mUfZBAZDZD"
-WHATSAPP_PHONE_NUMBER_ID = "908739995665969"
-WHATSAPP_WEBHOOK_VERIFY_TOKEN = "myspa-verify-123"
-WHATSAPP_APP_SECRET = "bf66c31b4e95877bac1812f6b62d2c6c"
-WHATSAPP_GRAPH_VERSION = "v24.0" 
+# Cron trigger para procesar mensajes programados en MESSAGE_QUEUE
+[triggers]
+crons = ["*/5 * * * *"]  # cada 5 minutos

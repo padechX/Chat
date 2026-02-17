@@ -83,9 +83,6 @@ function requireAdmin(request, env) {
 }
 
 async function handleScheduleCreate(request, env) {
-  const deny = requireAdmin(request, env)
-  if (deny) return deny
-
   const { to, text, type, media_id, media_link, filename, sendAt } = await request.json().catch(() => ({}))
   if (!to || !sendAt) return json({ ok: false, error: 'to and sendAt required' }, 400)
 
@@ -112,9 +109,6 @@ async function handleScheduleCreate(request, env) {
 }
 
 async function handleScheduleList(request, env) {
-  const deny = requireAdmin(request, env)
-  if (deny) return deny
-
   const stub = getQueueStub(env)
   const r = await stub.fetch('https://do/scheduled')
   return new Response(r.body, r)
