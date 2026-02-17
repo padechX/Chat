@@ -223,17 +223,19 @@ export class MessageQueue {
       )]
       if (dueRows.length === 0) return json({ ok: true, sent: 0 })
 
-      // Remove due first to avoid duplicates
-      for (const r of dueRows) {
-        this.state.storage.sql.exec('DELETE FROM scheduled WHERE id = ?', r.id)
-      }
-
       let sent = 0
+      const failedIds = []
+
       for (const r of dueRows) {
         let it
         try { it = JSON.parse(r.payload) } catch { it = null }
-        if (!it || !it.payload) continue
+        if (!it || !it.payload) {
+          console.log('>>> DO /run: invalid payload for id:', r.id)
+          continue
+        }
 
+        console.log('>>> DO /run: sending message to:', it.to)
+        
         const res = await fetch(`${getGraphBase(this.env)}/${this.env.WHATSAPP_PHONE_NUMBER_ID}/messages`, {
           method: 'POST',
           headers: {
@@ -242,10 +244,21 @@ export class MessageQueue {
           },
           body: JSON.stringify(it.payload)
         })
-        if (res.ok) sent++
+        
+        if (res.ok) {
+          sent++
+          // Only delete if send was successful
+          this.state.storage.sql.exec('DELETE FROM scheduled WHERE id = ?', r.id)
+          console.log('>>> DO /run: message sent successfully, deleted id:', r.id)
+        } else {
+          const errorText = await res.text().catch(() => 'unknown error')
+          console.log('>>> DO /run: message FAILED to send, keeping in scheduled. id:', r.id, 'status:', res.status, 'error:', errorText)
+          failedIds.push(r.id)
+        }
       }
 
-      return json({ ok: true, sent })
+      console.log('>>> DO /run: total sent:', sent, 'failed:', failedIds.length)
+      return json({ ok: true, sent, failed: failedIds.length })
     }
 
     if (path === '/debug-ids' && request.method === 'GET') {
