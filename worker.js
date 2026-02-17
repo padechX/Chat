@@ -83,8 +83,15 @@ function requireAdmin(request, env) {
 }
 
 async function handleScheduleCreate(request, env) {
+  console.log('>>> Worker: handleScheduleCreate START')
+  
   const { to, text, type, media_id, media_link, filename, sendAt } = await request.json().catch(() => ({}))
-  if (!to || !sendAt) return json({ ok: false, error: 'to and sendAt required' }, 400)
+  console.log('>>> Worker: received body:', { to, text, type, sendAt })
+  
+  if (!to || !sendAt) {
+    console.log('>>> Worker: missing to or sendAt')
+    return json({ ok: false, error: 'to and sendAt required' }, 400)
+  }
 
   const finalType = type || (text ? 'text' : 'image')
   let payload
@@ -100,12 +107,20 @@ async function handleScheduleCreate(request, env) {
   const stub = getQueueStub(env)
   const id = crypto.randomUUID()
   const item = { id, to, type: finalType, sendAt: Number(sendAt), payload }
+  
+  console.log('>>> Worker: calling DO with item:', item)
+  
   const r = await stub.fetch('https://do/schedule', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(item)
   })
-  return new Response(r.body, r)
+  
+  console.log('>>> Worker: DO response status:', r.status)
+  const body = await r.text()
+  console.log('>>> Worker: DO response body:', body)
+  
+  return new Response(body, { status: r.status, headers: { 'content-type': 'application/json' } })
 }
 
 async function handleScheduleList(request, env) {
@@ -124,6 +139,8 @@ export class MessageQueue {
   async fetch(request) {
     const url = new URL(request.url)
     const path = url.pathname
+    
+    console.log('>>> DO: received request', request.method, path)
 
     await ensureSqlSchema(this.state)
 
