@@ -56,6 +56,19 @@ export default {
       })
     }
 
+    // Bot automation endpoints
+    if (path === '/api/whatsapp/bot/config' && request.method === 'GET') {
+      return handleBotConfigGet(env)
+    }
+
+    if (path === '/api/whatsapp/bot/config' && request.method === 'POST') {
+      return handleBotConfigPost(request, env)
+    }
+
+    if (path === '/api/whatsapp/bot/stats' && request.method === 'GET') {
+      return handleBotStatsGet(env)
+    }
+
     return new Response('Not found', { status: 404 })
   },
 
@@ -72,6 +85,10 @@ async function ensureSqlSchema(state) {
   state.storage.sql.exec('CREATE INDEX IF NOT EXISTS idx_messages_status_ts ON messages(status, ts)')
   state.storage.sql.exec('CREATE TABLE IF NOT EXISTS scheduled (id TEXT PRIMARY KEY, sendAt INTEGER, payload TEXT)')
   state.storage.sql.exec('CREATE INDEX IF NOT EXISTS idx_scheduled_sendAt ON scheduled(sendAt)')
+  // Bot automation tables
+  state.storage.sql.exec('CREATE TABLE IF NOT EXISTS bot_config (id TEXT PRIMARY KEY DEFAULT "global", settings TEXT, quick_replies TEXT, business_hours TEXT)')
+  state.storage.sql.exec('CREATE TABLE IF NOT EXISTS bot_contacts (phone TEXT PRIMARY KEY, first_contact_ts INTEGER, last_response_ts INTEGER)')
+  state.storage.sql.exec('CREATE TABLE IF NOT EXISTS bot_stats (date TEXT PRIMARY KEY, responses_sent INTEGER DEFAULT 0, triggers_matched INTEGER DEFAULT 0)')
   _schemaReady = true
 }
 
@@ -266,6 +283,86 @@ export class MessageQueue {
       return json(rows)
     }
 
+    // Bot automation DO handlers
+    if (path === '/bot-config' && request.method === 'GET') {
+      const rows = [...this.state.storage.sql.exec('SELECT settings, quick_replies, business_hours FROM bot_config WHERE id = "global"')]
+      if (rows.length === 0) {
+        return json({ settings: null, quickReplies: null, businessHours: null })
+      }
+      return json({
+        settings: JSON.parse(rows[0].settings || '{}'),
+        quickReplies: JSON.parse(rows[0].quick_replies || '[]'),
+        businessHours: JSON.parse(rows[0].business_hours || '{}')
+      })
+    }
+
+    if (path === '/bot-config' && request.method === 'POST') {
+      const body = await request.json()
+      const settings = JSON.stringify(body.settings || {})
+      const quickReplies = JSON.stringify(body.quickReplies || [])
+      const businessHours = JSON.stringify(body.businessHours || {})
+      this.state.storage.sql.exec(
+        'INSERT OR REPLACE INTO bot_config (id, settings, quick_replies, business_hours) VALUES ("global", ?, ?, ?)',
+        settings, quickReplies, businessHours
+      )
+      return json({ ok: true })
+    }
+
+    if (path === '/bot-contact' && request.method === 'GET') {
+      const url = new URL(request.url)
+      const phone = url.searchParams.get('phone')
+      if (!phone) return json({ error: 'phone required' }, 400)
+      const rows = [...this.state.storage.sql.exec('SELECT first_contact_ts, last_response_ts FROM bot_contacts WHERE phone = ?', phone)]
+      if (rows.length === 0) {
+        return json({ first_contact_ts: null, last_response_ts: null })
+      }
+      return json({
+        first_contact_ts: rows[0].first_contact_ts,
+        last_response_ts: rows[0].last_response_ts
+      })
+    }
+
+    if (path === '/bot-contact' && request.method === 'POST') {
+      const body = await request.json()
+      const { phone, first_contact_ts, last_response_ts } = body
+      if (!phone) return json({ error: 'phone required' }, 400)
+      this.state.storage.sql.exec(
+        'INSERT OR REPLACE INTO bot_contacts (phone, first_contact_ts, last_response_ts) VALUES (?, ?, ?)',
+        phone, first_contact_ts, last_response_ts
+      )
+      return json({ ok: true })
+    }
+
+    if (path === '/bot-stats' && request.method === 'GET') {
+      const today = new Date().toISOString().split('T')[0]
+      const rows = [...this.state.storage.sql.exec('SELECT date, responses_sent, triggers_matched FROM bot_stats ORDER BY date DESC LIMIT 30')]
+      return json({ stats: rows, today })
+    }
+
+    if (path === '/bot-stats' && request.method === 'POST') {
+      const today = new Date().toISOString().split('T')[0]
+      const body = await request.json()
+      const type = body.type || 'unknown'
+      
+      // Get current stats for today
+      const rows = [...this.state.storage.sql.exec('SELECT responses_sent, triggers_matched FROM bot_stats WHERE date = ?', today)]
+      
+      if (rows.length === 0) {
+        // Insert new row
+        this.state.storage.sql.exec(
+          'INSERT INTO bot_stats (date, responses_sent, triggers_matched) VALUES (?, 1, 1)',
+          today
+        )
+      } else {
+        // Update existing
+        this.state.storage.sql.exec(
+          'UPDATE bot_stats SET responses_sent = responses_sent + 1, triggers_matched = triggers_matched + 1 WHERE date = ?',
+          today
+        )
+      }
+      return json({ ok: true })
+    }
+
     return new Response('DO Not found', { status: 404 })
   }
 }
@@ -299,7 +396,7 @@ async function handleWebhookVerify(url, env) {
   return new Response('Forbidden', { status: 403 })
 }
 
-async function handleWebhookPost(request, env) {
+async function handleWebhookPost(request, env, ctx) {
   console.log('WEBHOOK POST RECEIVED')
   
   if (env.WHATSAPP_APP_SECRET) {
@@ -320,6 +417,8 @@ async function handleWebhookPost(request, env) {
         const normalized = normalizeIncoming(m, value)
         if (!normalized) continue
         await stub.fetch('https://do/add', { method: 'POST', body: JSON.stringify(normalized), headers: { 'content-type': 'application/json' } })
+        // Process bot automation in background (non-blocking)
+        ctx.waitUntil(processBotAutomation(normalized, env))
       }
     }
   }
@@ -467,4 +566,208 @@ function base64ToUint8Array(b64) {
   const bytes = new Uint8Array(binary.length)
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
   return bytes
+}
+
+// ==================== BOT AUTOMATION FUNCTIONS ====================
+
+const DEFAULT_BOT_CONFIG = {
+  welcomeMessage: true,
+  awayMessage: false,
+  bookingConfirmation: true,
+  businessHours: true,
+  autoReply: true
+}
+
+const DEFAULT_QUICK_REPLIES = [
+  { id: "1", trigger: "horas", response: "Nuestro horario es Lunes a Viernes 9:00-20:00, Sábados 9:00-14:00." },
+  { id: "2", trigger: "cita", response: "Para agendar una cita, indícame el día y hora que prefieres o llámanos al (555) 123-4567." },
+  { id: "3", trigger: "ubicación", response: "Estamos en 123 Spa Street, Wellness City. ¡Tenemos estacionamiento gratuito!" },
+  { id: "4", trigger: "precio", response: "Nuestros servicios varían entre $80-$300. ¿Te gustaría nuestra lista completa de precios?" }
+]
+
+const DEFAULT_BUSINESS_HOURS = {
+  open: 9,
+  close: 20,
+  timezone: 'America/Mexico_City'
+}
+
+async function handleBotConfigGet(env) {
+  const stub = getQueueStub(env)
+  const r = await stub.fetch('https://do/bot-config')
+  return new Response(r.body, r)
+}
+
+async function handleBotConfigPost(request, env) {
+  const body = await request.json().catch(() => ({}))
+  const { settings, quickReplies, businessHours } = body
+  
+  const stub = getQueueStub(env)
+  const r = await stub.fetch('https://do/bot-config', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ settings, quickReplies, businessHours })
+  })
+  return new Response(r.body, r)
+}
+
+async function handleBotStatsGet(env) {
+  const stub = getQueueStub(env)
+  const r = await stub.fetch('https://do/bot-stats')
+  return new Response(r.body, r)
+}
+
+async function processBotAutomation(normalized, env) {
+  try {
+    // Only process text messages
+    if (normalized.type !== 'text' || !normalized.text) return
+    
+    const stub = getQueueStub(env)
+    
+    // Get bot config from DO
+    const configRes = await stub.fetch('https://do/bot-config')
+    const config = await configRes.json().catch(() => ({}))
+    
+    const settings = config.settings || DEFAULT_BOT_CONFIG
+    const quickReplies = config.quickReplies || DEFAULT_QUICK_REPLIES
+    const businessHours = config.businessHours || DEFAULT_BUSINESS_HOURS
+    
+    // Check if any automation is enabled
+    const anyEnabled = Object.values(settings).some(v => v)
+    if (!anyEnabled) return
+    
+    const phone = normalized.from
+    const message = normalized.text.toLowerCase()
+    const now = Date.now()
+    
+    // Check if first contact
+    const contactRes = await stub.fetch(`https://do/bot-contact?phone=${encodeURIComponent(phone)}`)
+    const contactData = await contactRes.json().catch(() => ({}))
+    const isFirstContact = !contactData.first_contact_ts
+    
+    let responseText = null
+    let responseType = null
+    
+    // 1. Welcome message for first contact
+    if (isFirstContact && settings.welcomeMessage) {
+      responseText = `¡Hola! 👋 Bienvenido/a a My Spa Business. Soy el asistente virtual y estoy aquí para ayudarte. ¿En qué puedo asistirte hoy?`
+      responseType = 'welcome'
+    }
+    
+    // 2. Away message if outside business hours (and not first contact)
+    if (!responseText && !isFirstContact && settings.awayMessage) {
+      const hour = new Date().getHours()
+      if (hour < businessHours.open || hour >= businessHours.close) {
+        responseText = `Gracias por contactarnos. ⏰ Nuestro horario de atención es de ${businessHours.open}:00 a ${businessHours.close}:00. Te responderemos en cuanto estemos disponibles. Para emergencias, llama al (555) 123-4567.`
+        responseType = 'away'
+      }
+    }
+    
+    // 3. Check quick replies (user-defined triggers)
+    if (!responseText && settings.autoReply) {
+      for (const reply of quickReplies) {
+        if (message.includes(reply.trigger.toLowerCase())) {
+          responseText = reply.response
+          responseType = 'quick_reply'
+          break
+        }
+      }
+    }
+    
+    // 4. Business hours query
+    if (!responseText && settings.businessHours) {
+      if (message.includes("horario") || message.includes("hora") || message.includes("abierto") || message.includes("abiertos")) {
+        responseText = `🕐 *Horario de Atención*\n\nLunes a Viernes: ${businessHours.open}:00 - ${businessHours.close}:00\nSábados: ${businessHours.open}:00 - 14:00\nDomingos: Cerrado\n\nReserva tu cita online 24/7 en nuestro sitio web.`
+        responseType = 'business_hours'
+      }
+    }
+    
+    // 5. Booking confirmation pattern
+    if (!responseText && settings.bookingConfirmation) {
+      if (message.includes("confirmo") || message.includes("confirmar") || message.includes("ok") || message.includes("perfecto")) {
+        responseText = `¡Perfecto! ✅ Tu cita ha sido confirmada. Recuerda llegar 10 minutos antes. Si necesitas cancelar o reprogramar, avísanos con al menos 24h de anticipación.`
+        responseType = 'booking_confirmation'
+      }
+    }
+    
+    // 6. Smart auto-reply for other queries
+    if (!responseText && settings.autoReply) {
+      responseText = generateSmartReply(message)
+      if (responseText) responseType = 'smart_reply'
+    }
+    
+    // Send response if we have one
+    if (responseText) {
+      // Small delay to avoid immediate responses
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
+      await sendBotResponse(phone, responseText, env)
+      
+      // Update contact record
+      await stub.fetch('https://do/bot-contact', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ phone, first_contact_ts: contactData.first_contact_ts || now, last_response_ts: now })
+      })
+      
+      // Update stats
+      await stub.fetch('https://do/bot-stats', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ type: responseType })
+      })
+      
+      console.log(`🤖 Bot sent ${responseType} to ${phone}`)
+    }
+  } catch (err) {
+    console.error('🤖 Bot automation error:', err)
+  }
+}
+
+function generateSmartReply(message) {
+  if (message.includes("precio") || message.includes("costo") || message.includes("tarifa")) {
+    return `💰 Nuestros servicios varían entre $80-$300. ¿Te gustaría que te envíe nuestra lista completa de precios?`
+  }
+  
+  if (message.includes("cita") || message.includes("reserva") || message.includes("agendar") || message.includes("turno")) {
+    return `📅 Puedo ayudarte a agendar una cita. ¿Qué día y hora te gustaría? También puedes decirme "esta semana" o "mañana" y te mostraré disponibilidad.`
+  }
+  
+  if (message.includes("ubicación") || message.includes("dirección") || message.includes("donde") || message.includes("dónde")) {
+    return `📍 Estamos ubicados en el centro de la ciudad. ¿Te gustaría que te envíe la ubicación exacta por WhatsApp?`
+  }
+  
+  if (message.includes("servicio") || message.includes("tratamiento") || message.includes("masaje") || message.includes("facial")) {
+    return `💆‍♀️ Ofrecemos masajes, faciales, manicure, pedicure y más. ¿Te gustaría conocer nuestros paquetes especiales?`
+  }
+  
+  if (message.includes("cancelar") || message.includes("reprogramar")) {
+    return `🔄 Entiendo que necesitas cambiar tu cita. Por favor indícame tu nombre y la fecha actual de la cita, y te ayudaré con la reprogramación.`
+  }
+  
+  return null
+}
+
+async function sendBotResponse(to, text, env) {
+  const payload = {
+    messaging_product: 'whatsapp',
+    to,
+    type: 'text',
+    text: { body: text }
+  }
+  
+  const res = await fetch(`${getGraphBase(env)}/${env.WHATSAPP_PHONE_NUMBER_ID}/messages`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${env.WHATSAPP_TOKEN}`,
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  })
+  
+  if (!res.ok) {
+    const error = await res.text().catch(() => 'unknown error')
+    console.error('🤖 Failed to send bot response:', error)
+  }
+  
+  return res.ok
 }
