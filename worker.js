@@ -160,10 +160,18 @@ export class MessageQueue {
 
     if (path === '/list' && request.method === 'GET') {
       const status = url.searchParams.get('status') || 'pending'
-      const rows = [...this.state.storage.sql.exec(
-        'SELECT data FROM messages WHERE status = ? ORDER BY ts ASC LIMIT 100',
-        status
-      )]
+      const sinceRaw = url.searchParams.get('since')
+      const since = sinceRaw != null ? Number(sinceRaw) : NaN
+      const limitRaw = Number(url.searchParams.get('limit') || 50)
+      const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(200, Math.trunc(limitRaw))) : 50
+      const order = (url.searchParams.get('order') || 'asc').toLowerCase() === 'desc' ? 'DESC' : 'ASC'
+      const hasSince = Number.isFinite(since) && since > 0
+      const sql = hasSince
+        ? `SELECT data FROM messages WHERE status = ? AND ts > ? ORDER BY ts ${order} LIMIT ${limit}`
+        : `SELECT data FROM messages WHERE status = ? ORDER BY ts ${order} LIMIT ${limit}`
+      const rows = hasSince
+        ? [...this.state.storage.sql.exec(sql, status, since)]
+        : [...this.state.storage.sql.exec(sql, status)]
       const list = rows
         .map((r) => {
           try { return JSON.parse(r.data) } catch { return null }
