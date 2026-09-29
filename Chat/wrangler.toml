@@ -1,0 +1,32 @@
+name = "whatsapp"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+# Run every minute to check for scheduled messages
+triggers = [
+  { cron = "* * * * *" }
+]
+
+ [durable_objects]
+bindings = [
+  { name = "MESSAGE_QUEUE", class_name = "MessageQueue" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["MessageQueue"]
+
+[observability]
+enabled = true
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true
+
+[observability.traces]
+enabled = false
+persist = true
+head_sampling_rate = 1
+
