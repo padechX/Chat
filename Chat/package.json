@@ -1,0 +1,17 @@
+{
+  "name": "myspa-social-backend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "typescript": "^5.4.5"
+  },
+  "scripts": {
+    "start": "node server.js"
+  }
+}
