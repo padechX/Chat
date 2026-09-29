@@ -12,6 +12,8 @@ export default {
     }
 
     if (path === '/api/whatsapp/send' && request.method === 'POST') {
+      const denied = requireAdmin(request, env)
+      if (denied) return denied
       return handleSend(request, env)
     }
 
@@ -30,18 +32,26 @@ export default {
 
     const mediaMatch = path.match(/^\/api\/whatsapp\/media\/([^/]+)$/)
     if (mediaMatch && request.method === 'GET') {
+      const denied = requireAdmin(request, env)
+      if (denied) return denied
       return handleMediaDownload(mediaMatch[1], env)
     }
 
     if (path === '/api/whatsapp/media/upload' && request.method === 'POST') {
+      const denied = requireAdmin(request, env)
+      if (denied) return denied
       return handleMediaUpload(request, env)
     }
 
     if (path === '/api/whatsapp/schedule' && request.method === 'POST') {
+      const denied = requireAdmin(request, env)
+      if (denied) return denied
       return handleScheduleCreate(request, env)
     }
 
     if (path === '/api/whatsapp/scheduled' && request.method === 'GET') {
+      const denied = requireAdmin(request, env)
+      if (denied) return denied
       return handleScheduleList(request, env)
     }
 
