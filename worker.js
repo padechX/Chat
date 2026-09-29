@@ -16,11 +16,15 @@ export default {
     }
 
     if (path === '/api/whatsapp/messages' && request.method === 'GET') {
+      const denied = requireAdmin(request, env)
+      if (denied) return denied
       return handleMessagesList(url, env)
     }
 
     const ackMatch = path.match(/^\/api\/whatsapp\/messages\/([^/]+)\/ack$/)
     if (ackMatch && request.method === 'POST') {
+      const denied = requireAdmin(request, env)
+      if (denied) return denied
       return handleAck(ackMatch[1], env)
     }
 
@@ -42,12 +46,16 @@ export default {
     }
 
     if (path === '/api/whatsapp/debug-ids' && request.method === 'GET') {
+      const denied = requireAdmin(request, env)
+      if (denied) return denied
       const stub = getQueueStub(env)
       const r = await stub.fetch('https://do/debug-ids')
       return new Response(r.body, r)
     }
 
     if (path === '/api/whatsapp/debug-env' && request.method === 'GET') {
+      const denied = requireAdmin(request, env)
+      if (denied) return denied
       return json({
         WHATSAPP_APP_SECRET: env.WHATSAPP_APP_SECRET ? 'SET' : 'NOT SET',
         WHATSAPP_TOKEN: env.WHATSAPP_TOKEN ? 'SET' : 'NOT SET',
@@ -76,9 +84,9 @@ async function ensureSqlSchema(state) {
 }
 
 function requireAdmin(request, env) {
-  if (!env.ADMIN_SECRET) return null
+  if (!env.ADMIN_SECRET) return new Response('Admin access is not configured', { status: 503 })
   const provided = request.headers.get('x-admin-secret')
-  if (provided && provided === env.ADMIN_SECRET) return null
+  if (provided === env.ADMIN_SECRET) return null
   return new Response('Forbidden', { status: 403 })
 }
 

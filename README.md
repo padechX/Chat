@@ -112,8 +112,14 @@ En **Workers & Pages / `chat` / Settings / Variables and Secrets / Production**,
 - **`WHATSAPP_WEBHOOK_VERIFY_TOKEN`**
 - **`WHATSAPP_APP_SECRET`** (recomendado para validar la firma de Meta)
 - **`WHATSAPP_GRAPH_VERSION`** (opcional; por ejemplo, `v25.0`)
+- **`ADMIN_SECRET`** (Secret; clave aleatoria para proteger la consulta y confirmación de mensajes desde MySpa)
 
 No uses aquí los nombres alternativos del `.env` de la aplicación principal; este Worker lee los nombres anteriores.
+
+Para sincronizar los mensajes entrantes con la aplicación MySpa, configura en el `.env` de MySpa:
+
+- **`WHATSAPP_WORKER_URL`**: `https://chat.padechchn.workers.dev`
+- **`WHATSAPP_WORKER_ADMIN_SECRET`**: el mismo valor guardado como Secret `ADMIN_SECRET` en el Worker. No lo compartas en el navegador ni en conversaciones.
 
 - **WHATSAPP_TOKEN**
   - Este token se genera en la plataforma **Meta for Developers**
