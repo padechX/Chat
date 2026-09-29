@@ -103,7 +103,17 @@ Se abre el desplegable y es donde vas a introducir las **variables de entorno**.
 </p>
 
 
-## VARIABLES DE ENTORNO 
+## VARIABLES DE ENTORNO
+
+En **Workers & Pages / `chat` / Settings / Variables and Secrets / Production**, configura estos nombres exactamente como aparecen aquí:
+
+- **`WHATSAPP_TOKEN`**
+- **`WHATSAPP_PHONE_NUMBER_ID`**
+- **`WHATSAPP_WEBHOOK_VERIFY_TOKEN`**
+- **`WHATSAPP_APP_SECRET`** (recomendado para validar la firma de Meta)
+- **`WHATSAPP_GRAPH_VERSION`** (opcional; por ejemplo, `v24.0`)
+
+No uses aquí los nombres alternativos del `.env` de la aplicación principal; este Worker lee los nombres anteriores.
 
 - **WHATSAPP_TOKEN**
   - Este token se genera en la plataforma **Meta for Developers**
