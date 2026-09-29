@@ -111,7 +111,7 @@ En **Workers & Pages / `chat` / Settings / Variables and Secrets / Production**,
 - **`WHATSAPP_PHONE_NUMBER_ID`**
 - **`WHATSAPP_WEBHOOK_VERIFY_TOKEN`**
 - **`WHATSAPP_APP_SECRET`** (recomendado para validar la firma de Meta)
-- **`WHATSAPP_GRAPH_VERSION`** (opcional; por ejemplo, `v24.0`)
+- **`WHATSAPP_GRAPH_VERSION`** (opcional; por ejemplo, `v26.0`)
 
 No uses aquí los nombres alternativos del `.env` de la aplicación principal; este Worker lee los nombres anteriores.
 
